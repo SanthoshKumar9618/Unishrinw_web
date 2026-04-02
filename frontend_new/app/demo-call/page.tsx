@@ -12,6 +12,11 @@ type Status =
   | "ended"
   | "error";
 
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export default function DemoCallPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -23,11 +28,10 @@ export default function DemoCallPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [leadId, setLeadId] = useState<string | null>(null);
 
+  const [messages, setMessages] = useState<Message[]>([]);
+
   const MAX_RECORD_TIME = 6000;
 
-  // =============================
-  // INIT
-  // =============================
   useEffect(() => {
     const cfg = localStorage.getItem("voice_config");
     const sid = localStorage.getItem("session_id");
@@ -44,9 +48,6 @@ export default function DemoCallPage() {
     setLeadId(lid);
   }, []);
 
-  // =============================
-  // START CALL
-  // =============================
   const startCall = async () => {
     if (!config || !sessionId) return;
 
@@ -65,36 +66,38 @@ export default function DemoCallPage() {
 
       const data = await processVoice(formData);
 
+      const aiText = data?.data?.text || "Hello 👋";
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: aiText },
+      ]);
+
       await playAudio(data?.data?.audio_url);
 
       startRecording();
-
     } catch (err) {
       console.error(err);
       setStatus("error");
     }
   };
 
-  // =============================
-  // RECORD
-  // =============================
   const startRecording = async () => {
     if (status === "ended") return;
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-            sampleRate: 48000,
-          },
-        });
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
       streamRef.current = stream;
 
       const recorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm", // 🔥 FIXED
+        mimeType: "audio/webm",
       });
 
       mediaRecorderRef.current = recorder;
@@ -106,23 +109,18 @@ export default function DemoCallPage() {
         }
       };
 
-      
       recorder.onstop = sendAudio;
 
       recorder.start();
       setStatus("listening");
 
       setTimeout(() => recorder.stop(), MAX_RECORD_TIME);
-
     } catch (err) {
       console.error(err);
       setStatus("error");
     }
   };
 
-  // =============================
-  // SEND AUDIO
-  // =============================
   const sendAudio = async () => {
     if (!config || !sessionId) return;
 
@@ -130,12 +128,6 @@ export default function DemoCallPage() {
 
     try {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      console.log("BLOB SIZE:", blob.size);
-
-      // 🔥 DEBUG — hear what you recorded
-      const debugAudio = new Audio(URL.createObjectURL(blob));
-      debugAudio.controls = true;
-      document.body.appendChild(debugAudio);
 
       if (blob.size < 2000) {
         return startRecording();
@@ -153,25 +145,29 @@ export default function DemoCallPage() {
 
       const data = await processVoice(formData);
 
+      const userText = data?.data?.user_text || "...";
+      const aiText = data?.data?.text || "...";
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: userText },
+        { role: "assistant", content: aiText },
+      ]);
+
       await playAudio(data?.data?.audio_url);
 
       startRecording();
-
     } catch (err) {
       console.error(err);
       setStatus("idle");
     }
   };
 
-  // =============================
-  // AUDIO
-  // =============================
   const playAudio = async (url: string) => {
     setStatus("speaking");
 
     try {
       const audio = new Audio(url + "&t=" + Date.now());
-
       audioRef.current = audio;
 
       await audio.play();
@@ -182,16 +178,12 @@ export default function DemoCallPage() {
           resolve();
         };
       });
-
     } catch (err) {
-      console.error("Audio failed", err);
+      console.error(err);
       setStatus("error");
     }
   };
 
-  // =============================
-  // END
-  // =============================
   const handleEnd = async () => {
     setStatus("ended");
 
@@ -208,30 +200,86 @@ export default function DemoCallPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black text-white">
-      <div className="space-y-4 text-center">
+  <div className="h-screen flex items-center justify-center bg-white">
 
-        <h1 className="text-2xl">AI Voice Call</h1>
+    {/* MAIN CONTAINER */}
+    <div className="flex gap-12 items-center">
 
-        <p>{status}</p>
+      {/* ================= LEFT: PHONE ================= */}
+      <div className="w-[260px] h-[500px] rounded-[40px] bg-[#1e293b] shadow-xl flex flex-col items-center justify-center">
 
-        {status === "idle" && (
+        {/* Avatar */}
+        <div className="w-20 h-20 rounded-full bg-[#334155] flex items-center justify-center text-2xl text-white">
+          🤖
+        </div>
+
+        {/* Status */}
+        <p className="mt-6 text-sm text-gray-300">
+          {status === "connecting" && "Calling..."}
+          {status === "listening" && "Listening..."}
+          {status === "processing" && "Thinking..."}
+          {status === "speaking" && "Speaking..."}
+          {status === "idle" && "Ready"}
+        </p>
+
+        {/* Buttons */}
+        <div className="flex gap-4 mt-10">
+          {status === "idle" && (
+            <button
+              onClick={startCall}
+              className="w-12 h-12 rounded-full bg-green-500 text-white"
+            >
+              📞
+            </button>
+          )}
+
           <button
-            onClick={startCall}
-            className="bg-blue-600 px-6 py-3 rounded-xl"
+            onClick={handleEnd}
+            className="w-12 h-12 rounded-full bg-red-500 text-white"
           >
-            Start Call
+            ✕
           </button>
-        )}
+        </div>
+      </div>
 
-        <button
-          onClick={handleEnd}
-          className="bg-red-600 px-6 py-3 rounded-xl"
-        >
-          End Call
-        </button>
+      {/* ================= RIGHT: CHAT ================= */}
+      <div className="w-[320px] h-[500px] rounded-[30px] bg-white/70 backdrop-blur-md border border-gray-200 shadow-lg flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="p-3 text-center text-sm font-medium text-gray-600 border-b">
+          Conversation
+        </div>
+
+        {/* Chat Area */}
+        <div className="flex-1 p-3 space-y-2 overflow-y-auto bg-gray-50">
+
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`flex ${
+                msg.role === "user" ? "justify-end" : "justify-start"
+              }`}
+            >
+              <div
+                className={`
+                  px-3 py-2 text-sm rounded-lg max-w-[75%]
+                  ${
+                    msg.role === "user"
+                      ? "bg-blue-500 text-white rounded-br-none"
+                      : "bg-gray-200 text-black rounded-bl-none"
+                  }
+                `}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ))}
+
+        </div>
 
       </div>
+
     </div>
-  );
+  </div>
+);
 }

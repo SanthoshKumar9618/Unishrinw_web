@@ -26,7 +26,7 @@ class ProcessVoiceUseCase:
         print("🧾 USER TEXT:", user_text)
 
         if not user_text or len(user_text.strip()) == 0:
-            return await self._fallback(dto, "I couldn't hear you clearly. Please speak again.")
+            return await self._fallback(dto, "Hello! I am Zeva.ai. How can I help you?")
 
         # =========================
         # STORE USER
@@ -70,10 +70,10 @@ class ProcessVoiceUseCase:
         )
 
         return {
-            "transcript": user_text,
-            "response_text": ai_text,
-            "audio_url": audio_url
-        }
+    "user_text": user_text,
+    "text": ai_text,
+    "audio_url": audio_url
+}
 
     # =========================
     # PROMPT
@@ -131,7 +131,7 @@ Instructions:
         )
 
         return {
-            "transcript": "",
-            "response_text": message,
-            "audio_url": audio_url
-        }
+    "user_text": "",
+    "text": message,
+    "audio_url": audio_url
+}
